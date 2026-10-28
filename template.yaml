@@ -1,0 +1,39 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Process queued jobs with Lambda and Amazon SQS with a dead-letter queue.
+Resources:
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+  JobsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 180
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 3
+  WorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: worker.handler
+      Runtime: python3.12
+      Timeout: 30
+      MemorySize: 128
+      Policies:
+        - SQSPollerPolicy:
+            QueueName: !GetAtt JobsQueue.QueueName
+      Events:
+        QueueEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt JobsQueue.Arn
+            BatchSize: 5
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+Outputs:
+  QueueUrl:
+    Value: !Ref JobsQueue
+  DeadLetterQueueUrl:
+    Value: !Ref DeadLetterQueue
